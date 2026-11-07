@@ -1,0 +1,7 @@
+# 二进制文件不做换行符转换
+*.a       binary
+*.so      binary
+*.dll     binary
+*.exe     binary
+*.bin     binary
+tools/adb/linux-aarch64/adb binary
