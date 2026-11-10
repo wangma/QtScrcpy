@@ -1,0 +1,195 @@
+diff --git a/include/QtScrcpyCore.h b/include/QtScrcpyCore.h
+index 1e67de1..3cab607 100644
+--- a/include/QtScrcpyCore.h
++++ b/include/QtScrcpyCore.h
+@@ -109,6 +109,8 @@ public:
+     virtual void mouseEvent(const QMouseEvent *from, const QSize &frameSize, const QSize &showSize) = 0;
+     virtual void wheelEvent(const QWheelEvent *from, const QSize &frameSize, const QSize &showSize) = 0;
+     virtual void keyEvent(const QKeyEvent *from, const QSize &frameSize, const QSize &showSize) = 0;
++    // 主机侧显示旋转角度（0/90/180/270）：只影响游戏模式下鼠标移动方向的换算，不改变手机
++    virtual void setDisplayRotation(int rotation) { Q_UNUSED(rotation); }
+ 
+     virtual void postGoBack() = 0;
+     virtual void postGoHome() = 0;
+diff --git a/src/device/controller/controller.cpp b/src/device/controller/controller.cpp
+index 8d0a621..de33e8a 100644
+--- a/src/device/controller/controller.cpp
++++ b/src/device/controller/controller.cpp
+@@ -76,9 +76,18 @@ void Controller::updateScript(QString gameScript)
+         m_inputConvert = new InputConvertNormal(this);
+     }
+     Q_ASSERT(m_inputConvert);
++    m_inputConvert->setDisplayRotation(m_displayRotation);
+     connect(m_inputConvert, &InputConvertBase::grabCursor, this, &Controller::grabCursor);
+ }
+ 
++void Controller::setDisplayRotation(int rotation)
++{
++    m_displayRotation = ((rotation % 360) + 360) % 360;
++    if (m_inputConvert) {
++        m_inputConvert->setDisplayRotation(m_displayRotation);
++    }
++}
++
+ bool Controller::isCurrentCustomKeymap()
+ {
+     if (!m_inputConvert) {
+diff --git a/src/device/controller/controller.h b/src/device/controller/controller.h
+index f1b36a7..40515df 100644
+--- a/src/device/controller/controller.h
++++ b/src/device/controller/controller.h
+@@ -52,6 +52,8 @@ public:
+     void mouseEvent(const QMouseEvent *from, const QSize &frameSize, const QSize &showSize);
+     void wheelEvent(const QWheelEvent *from, const QSize &frameSize, const QSize &showSize);
+     void keyEvent(const QKeyEvent *from, const QSize &frameSize, const QSize &showSize);
++    // 主机侧显示旋转角度（0/90/180/270），用于游戏模式下鼠标移动方向的换算
++    void setDisplayRotation(int rotation);
+ 
+     // turn the screen on if it was off, press BACK otherwise
+     // If the screen is off, it is turned on only on down
+@@ -80,6 +82,8 @@ private:
+     QSize m_pendingResize;
+     bool m_resizeQueued = false;
+     bool m_cameraMode = false;
++    // 主机侧显示旋转角度，inputConvert重建后需要继承该值
++    int m_displayRotation = 0;
+ };
+ 
+ #endif // CONTROLLER_H
+diff --git a/src/device/controller/inputconvert/inputconvertbase.cpp b/src/device/controller/inputconvert/inputconvertbase.cpp
+index 25203be..fc6fb72 100644
+--- a/src/device/controller/inputconvert/inputconvertbase.cpp
++++ b/src/device/controller/inputconvert/inputconvertbase.cpp
+@@ -14,3 +14,36 @@ void InputConvertBase::sendControlMsg(ControlMsg *msg)
+         m_controller->postControlMsg(msg);
+     }
+ }
++
++void InputConvertBase::setDisplayRotation(int rotation)
++{
++    m_displayRotation = ((rotation % 360) + 360) % 360;
++}
++
++int InputConvertBase::displayRotation() const
++{
++    return m_displayRotation;
++}
++
++QPointF InputConvertBase::displayDeltaToScreenDelta(const QPointF &delta) const
++{
++    // VideoForm::mapInputPos 的逆变换：
++    //   90° -> mapped(x, y) = (sy, w - sx)  =>  dx = -dy_mapped, dy = dx_mapped
++    //  180° -> mapped(x, y) = (w - sx, h - sy)
++    //  270° -> mapped(x, y) = (h - sy, sx) =>  dx = dy_mapped, dy = -dx_mapped
++    QPointF screenDelta = delta;
++    switch (m_displayRotation) {
++    case 90:
++        screenDelta = QPointF(-delta.y(), delta.x());
++        break;
++    case 180:
++        screenDelta = QPointF(-delta.x(), -delta.y());
++        break;
++    case 270:
++        screenDelta = QPointF(delta.y(), -delta.x());
++        break;
++    default:
++        break;
++    }
++    return screenDelta;
++}
+diff --git a/src/device/controller/inputconvert/inputconvertbase.h b/src/device/controller/inputconvert/inputconvertbase.h
+index d9f8dc5..0e4e12c 100644
+--- a/src/device/controller/inputconvert/inputconvertbase.h
++++ b/src/device/controller/inputconvert/inputconvertbase.h
+@@ -26,16 +26,27 @@ public:
+         return false;
+     }
+ 
++    // 主机侧显示旋转角度（0/90/180/270）：窗口上显示的画面相对视频帧旋转的角度
++    // VideoForm 已经把窗口坐标反向映射回未旋转的坐标系，这里记录角度供鼠标位移方向换算使用
++    void setDisplayRotation(int rotation);
++    int displayRotation() const;
++
+ signals:
+     void grabCursor(bool grab);
+ 
+ protected:
+     void sendControlMsg(ControlMsg *msg);
+ 
++    // 把 VideoForm 反向映射后的“未旋转坐标系”下的位移，换算成屏幕上实际移动方向的位移
++    // （旋转90/270度时窗口宽高互换，位移的x/y分量也需要对应换算）
++    QPointF displayDeltaToScreenDelta(const QPointF &delta) const;
++
+     QPointer<Controller> m_controller;
+     // Qt reports repeated events as a boolean, but Android expects the actual
+     // number of repetitions. This variable keeps track of the count.
+     unsigned m_repeat = 0;
++    // 主机侧显示旋转角度
++    int m_displayRotation = 0;
+ };
+ 
+ #endif // INPUTCONVERTBASE_H
+diff --git a/src/device/controller/inputconvert/inputconvertgame.cpp b/src/device/controller/inputconvert/inputconvertgame.cpp
+index 49a0eaf..55a4d20 100644
+--- a/src/device/controller/inputconvert/inputconvertgame.cpp
++++ b/src/device/controller/inputconvert/inputconvertgame.cpp
+@@ -658,6 +658,10 @@ void InputConvertGame::moveCursorTo(const QMouseEvent *from, const QPoint &local
+     QPoint posOffset = from->position().toPoint() - localPosPixel;
+     QPoint globalPos = from->globalPosition().toPoint();
+ #endif
++    // 主机侧旋转显示时，把偏移换算成屏幕方向，保证光标warp到正确的位置
++    if (m_displayRotation != 0) {
++        posOffset = displayDeltaToScreenDelta(QPointF(posOffset.x(), posOffset.y())).toPoint();
++    }
+     globalPos -= posOffset;
+     //qDebug()<<"move cursor to "<<globalPos<<" offset "<<posOffset;
+ #ifdef Q_OS_MACOS
+diff --git a/src/device/device.cpp b/src/device/device.cpp
+index 3a897fa..159109a 100644
+--- a/src/device/device.cpp
++++ b/src/device/device.cpp
+@@ -77,6 +77,7 @@ Device::Device(DeviceParams params, QObject *parent) : IDevice(parent), m_params
+             return m_server->getControlSocket()->write(buffer.data(), buffer.length());
+         }, m_params.gameScript, this);
+         m_controller->setCameraMode(isCameraMode());
++        m_controller->setDisplayRotation(m_displayRotation);
+     }
+ 
+     m_stream = new Demuxer(this);
+@@ -145,6 +146,14 @@ bool Device::isFlexDisplay() const
+     return m_params.flexDisplay;
+ }
+ 
++void Device::setDisplayRotation(int rotation)
++{
++    m_displayRotation = ((rotation % 360) + 360) % 360;
++    if (m_controller) {
++        m_controller->setDisplayRotation(m_displayRotation);
++    }
++}
++
+ void Device::updateScript(QString script)
+ {
+     if (isCameraMode()) {
+diff --git a/src/device/device.h b/src/device/device.h
+index afb8189..22cfbb4 100644
+--- a/src/device/device.h
++++ b/src/device/device.h
+@@ -43,6 +43,8 @@ public:
+     void mouseEvent(const QMouseEvent *from, const QSize &frameSize, const QSize &showSize) override;
+     void wheelEvent(const QWheelEvent *from, const QSize &frameSize, const QSize &showSize) override;
+     void keyEvent(const QKeyEvent *from, const QSize &frameSize, const QSize &showSize) override;
++    // 主机侧显示旋转角度，仅影响游戏模式鼠标移动方向换算
++    void setDisplayRotation(int rotation) override;
+ 
+     void postGoBack() override;
+     void postGoHome() override;
+@@ -100,6 +102,8 @@ private:
+     DeviceParams m_params;
+     std::set<DeviceObserver*> m_deviceObservers;
+     void* m_userData = nullptr;
++    // 主机侧显示旋转角度，controller创建后需要继承该值
++    int m_displayRotation = 0;
+ };
+ 
+ }

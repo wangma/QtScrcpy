@@ -211,6 +211,7 @@ Note: it is not necessary to keep your Android device connected via USB after yo
 - Wireless connection
 - Supports multiple device connections
 - Full-screen display
+- Host-side display rotation: rotate the mirrored picture between landscape and portrait on the PC (the phone orientation is left untouched), see [details](docs/DISPLAY_ROTATION.md)
 - Display on the top
 - Install apk: drag and drop apk to the video window to install
 - Transfer files: Drag files to the video window to send files to Android devices
@@ -226,6 +227,33 @@ Note: it is not necessary to keep your Android device connected via USB after yo
 - Group control
 - Sync device speaker sound to the computer (based on [sndcpy](https://github.com/rom1v/sndcpy), Android 10+ only)
 
+## Host-side display rotation (new in this branch)
+
+Rotate the mirrored picture 90 degrees clockwise on the PC to view a portrait phone in landscape (or the other way round). **Only the window picture is rotated - the phone orientation and its settings are never changed.**
+
+Three entry points, applied immediately and persisted (`DisplayOrientation` in `config/userdata.ini`: 0=follow video, 1=force portrait, 2=force landscape):
+
+- the `display orientation` combo box in the start dialog;
+- the rotation button on the tool bar;
+- the `Ctrl + Shift + R` shortcut (`Cmd + Shift + R` on macOS).
+
+Unlike the existing `Ctrl + R`, which really rotates the **phone**, `Ctrl + Shift + R` only rotates the **PC window**.
+
+The renderer only rewrites texture coordinates (no re-encoding, no pixel copies); the window ratio, the click coordinates (`mapInputPos` / `inputShowSize`) and the game-mode mouse deltas (`displayDeltaToScreenDelta`) are transformed back accordingly. flex display (virtual display) and camera mode are excluded.
+
+Test results (Orange Pi 5 Plus / aarch64, vivo S10 portrait-locked, Release build):
+
+| Case | Result |
+|---|---|
+| `make -j8` full build (incl. submodule and i18n) | pass |
+| Session established, frames rendered | ok |
+| Portrait phone + force landscape | window 960x429 (~2400x1080), picture rotated 90 degrees clockwise |
+| `Ctrl+Shift+R` toggles landscape/portrait | window toggles between 960x429 and 380x849 |
+| Orientation kept after restart | `DisplayOrientation=2` persisted in `userdata.ini` and restored |
+| Click / long-press / swipe accuracy, game-mode aim | mapping implemented, manual verification still pending |
+
+See [docs/DISPLAY_ROTATION.md](docs/DISPLAY_ROTATION.md) for the design, the full changed-file list and the complete test log.
+
 ## Shortcuts
 
  | Action                                 |   Shortcut (Windows)          |   Shortcut (macOS)
@@ -233,6 +261,7 @@ Note: it is not necessary to keep your Android device connected via USB after yo
  | Switch fullscreen mode                 | `Ctrl`+`f`                    | `Cmd`+`f`
  | Resize window to 1:1 (pixel-perfect)   | `Ctrl`+`g`                    | `Cmd`+`g`
  | Resize window to remove black borders  | `Ctrl`+`w` \| _Double-click¹_ | `Cmd`+`w`  \| _Double-click¹_
+ | Toggle host-side landscape/portrait    | `Ctrl`+`Shift`+`R`            | `Cmd`+`Shift`+`R`
  | Click on `HOME`                        | `Ctrl`+`h` \| _Middle-click_  | `Ctrl`+`h` \| _Middle-click_
  | Click on `BACK`                        | `Ctrl`+`b` \| _Right-click²_  | `Cmd`+`b`  \| _Right-click²_
  | Click on `APP_SWITCH`                  | `Ctrl`+`s`                    | `Cmd`+`s`
