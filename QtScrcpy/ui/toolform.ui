@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>63</width>
-    <height>537</height>
+    <height>570</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -77,6 +77,16 @@
     <widget class="QPushButton" name="rotateBtn">
      <property name="toolTip">
       <string>rotate device (Ctrl+R)</string>
+     </property>
+     <property name="text">
+      <string/>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QPushButton" name="orientationBtn">
+     <property name="toolTip">
+      <string>toggle landscape/portrait (Ctrl+Shift+R)</string>
      </property>
      <property name="text">
       <string/>

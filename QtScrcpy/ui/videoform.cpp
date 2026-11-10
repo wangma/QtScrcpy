@@ -219,7 +219,9 @@ void VideoForm::updateRender(int width, int height, uint8_t* dataY, uint8_t* dat
     if (!m_flexDisplay) {
         updateShowSize(QSize(width, height));
     } else {
+        // 虚拟显示器尺寸由 client 决定，不做主机侧旋转
         m_frameSize = QSize(width, height);
+        m_displayFrameSize = m_frameSize;
     }
     m_videoWidget->setFrameSize(QSize(width, height));
     m_videoWidget->updateTextures(dataY, dataU, dataV, linesizeY, linesizeU, linesizeV);
@@ -231,8 +233,134 @@ void VideoForm::setSerial(const QString &serial)
     auto device = qsc::IDeviceManage::getInstance().getDevice(m_serial);
     m_flexDisplay = device && device->isFlexDisplay();
     if (m_flexDisplay) {
+        // 虚拟显示器尺寸由 client 端画面决定，主机侧旋转会导致反复 resizeDisplay
+        m_displayOrientation = FollowVideo;
+        updateDisplayRotation(m_frameSize);
+        applyDisplaySize();
         ui->keepRatioWidget->setWidthHeightRatio(-1.0f);
     }
+}
+
+void VideoForm::setDisplayOrientation(int orientation)
+{
+    orientation = qBound(static_cast<int>(FollowVideo), orientation, static_cast<int>(ForceLandscape));
+    if (m_flexDisplay) {
+        orientation = FollowVideo;
+    }
+    if (m_displayOrientation == orientation) {
+        return;
+    }
+
+    m_displayOrientation = orientation;
+    updateDisplayRotation(m_frameSize);
+    applyDisplaySize();
+    emit displayOrientationChanged(m_displayOrientation);
+}
+
+void VideoForm::toggleDisplayOrientation()
+{
+    if (m_flexDisplay) {
+        return;
+    }
+    setDisplayOrientation(isDisplayPortrait() ? ForceLandscape : ForcePortrait);
+    persistDisplayOrientation();
+}
+
+int VideoForm::displayOrientation() const
+{
+    return m_displayOrientation;
+}
+
+int VideoForm::displayRotation() const
+{
+    return m_displayRotation;
+}
+
+bool VideoForm::isDisplayPortrait() const
+{
+    if (!m_displayFrameSize.isEmpty()) {
+        return m_displayFrameSize.height() > m_displayFrameSize.width();
+    }
+    return m_widthHeightRatio < 1.0f;
+}
+
+void VideoForm::persistDisplayOrientation()
+{
+    UserBootConfig config = Config::getInstance().getUserBootConfig();
+    if (config.displayOrientation == m_displayOrientation) {
+        return;
+    }
+    config.displayOrientation = m_displayOrientation;
+    Config::getInstance().setUserBootConfig(config);
+}
+
+void VideoForm::updateDisplayRotation(const QSize &frameSize)
+{
+    m_displayRotation = 0;
+    if (m_displayOrientation == FollowVideo || frameSize.isEmpty() || frameSize.width() == frameSize.height()) {
+        return;
+    }
+
+    // 帧方向和目标显示方向不一致时，把画面旋转90°
+    const bool framePortrait = frameSize.height() > frameSize.width();
+    const bool wantPortrait = (m_displayOrientation == ForcePortrait);
+    if (framePortrait != wantPortrait) {
+        m_displayRotation = 90;
+    }
+}
+
+QPointF VideoForm::mapInputPos(const QPointF &pos) const
+{
+    QWidget *vw = videoWidget();
+    if (!vw || m_displayRotation == 0) {
+        return pos;
+    }
+
+    const qreal w = vw->width();
+    const qreal h = vw->height();
+    if (w <= 0 || h <= 0) {
+        return pos;
+    }
+
+    // 渲染层把画面顺时针旋转了 m_displayRotation，
+    // 这里把窗口坐标逆映射回“未旋转”的窗口坐标，
+    // 同时 inputShowSize() 会把宽高互换，输入转换的比例保持不变
+    QPointF mapped;
+    qreal maxX = w;
+    qreal maxY = h;
+    switch (m_displayRotation) {
+    case 90:
+        mapped = QPointF(pos.y(), w - pos.x());
+        maxX = h;
+        maxY = w;
+        break;
+    case 180:
+        mapped = QPointF(w - pos.x(), h - pos.y());
+        break;
+    case 270:
+        mapped = QPointF(h - pos.y(), pos.x());
+        maxX = h;
+        maxY = w;
+        break;
+    default:
+        return pos;
+    }
+
+    mapped.setX(qBound(0.0, mapped.x(), maxX));
+    mapped.setY(qBound(0.0, mapped.y(), maxY));
+    return mapped;
+}
+
+QSize VideoForm::inputShowSize() const
+{
+    QWidget *vw = videoWidget();
+    if (!vw) {
+        return m_frameSize;
+    }
+    if (m_displayRotation == 90 || m_displayRotation == 270) {
+        return QSize(vw->height(), vw->width());
+    }
+    return vw->size();
 }
 
 void VideoForm::showToolForm(bool show)
@@ -240,6 +368,7 @@ void VideoForm::showToolForm(bool show)
     if (!m_toolForm) {
         m_toolForm = new ToolForm(this, ToolForm::AP_OUTSIDE_RIGHT);
         m_toolForm->setSerial(m_serial);
+        connect(m_toolForm, &ToolForm::orientationSwitchRequested, this, &VideoForm::toggleDisplayOrientation);
     }
     m_toolForm->move(pos().x() + geometry().width(), pos().y() + 30);
     m_toolForm->setVisible(show);
@@ -395,6 +524,11 @@ void VideoForm::installShortcut()
         }
     });
 
+    // toggle display orientation (host side landscape/portrait)
+    shortcut = new QShortcut(QKeySequence("Ctrl+Shift+r"), this);
+    shortcut->setAutoRepeat(false);
+    connect(shortcut, &QShortcut::activated, this, [this]() { toggleDisplayOrientation(); });
+
     // collapsePanel
     shortcut = new QShortcut(QKeySequence("Ctrl+Shift+n"), this);
     shortcut->setAutoRepeat(false);
@@ -504,46 +638,79 @@ void VideoForm::updateShowSize(const QSize &newSize)
 {
     if (m_frameSize != newSize) {
         m_frameSize = newSize;
+        // 帧方向可能变化（例如手机旋转），需要重新计算主机侧旋转角度
+        updateDisplayRotation(m_frameSize);
+        applyDisplaySize();
+    }
+}
 
-        m_widthHeightRatio = 1.0f * newSize.width() / newSize.height();
-        ui->keepRatioWidget->setWidthHeightRatio(m_widthHeightRatio);
+void VideoForm::applyDisplaySize()
+{
+    // 同步渲染层的画面旋转（仅改变纹理坐标，不改动帧尺寸）
+    if (m_videoWidget) {
+        m_videoWidget->setRotation(m_displayRotation);
+    }
+#ifdef Q_OS_MACOS
+    if (m_metalWidget) {
+        m_metalWidget->setRotation(m_displayRotation);
+    }
+#endif
 
-        bool vertical = m_widthHeightRatio < 1.0f ? true : false;
-        QSize showSize = newSize;
-        QRect screenRect = getScreenRect();
-        if (screenRect.isEmpty()) {
-            qWarning() << "getScreenRect is empty";
-            return;
-        }
-        if (vertical) {
-            showSize.setHeight(qMin(newSize.height(), screenRect.height() - 200));
-            showSize.setWidth(showSize.height() * m_widthHeightRatio);
-        } else {
-            showSize.setWidth(qMin(newSize.width(), screenRect.width() / 2));
-            showSize.setHeight(showSize.width() / m_widthHeightRatio);
-        }
+    // 同步给输入转换层：游戏模式下鼠标位移方向需要按旋转角度换算
+    if (auto device = qsc::IDeviceManage::getInstance().getDevice(m_serial)) {
+        device->setDisplayRotation(m_displayRotation);
+    }
 
-        if (isFullScreen() && qsc::IDeviceManage::getInstance().getDevice(m_serial)) {
-            switchFullScreen();
-        }
+    m_displayFrameSize = (m_displayRotation == 90 || m_displayRotation == 270)
+            ? QSize(m_frameSize.height(), m_frameSize.width())
+            : m_frameSize;
 
-        if (isMaximized()) {
-            showNormal();
-        }
+    // 虚拟显示器由 client 决定尺寸，不参与主机侧旋转和比例调整
+    if (m_flexDisplay || m_frameSize.isEmpty()) {
+        return;
+    }
 
+    m_widthHeightRatio = 1.0f * m_displayFrameSize.width() / m_displayFrameSize.height();
+    ui->keepRatioWidget->setWidthHeightRatio(m_widthHeightRatio);
+
+    bool vertical = m_widthHeightRatio < 1.0f ? true : false;
+    QSize showSize = m_displayFrameSize;
+    QRect screenRect = getScreenRect();
+    if (screenRect.isEmpty()) {
+        qWarning() << "getScreenRect is empty";
+        return;
+    }
+    if (vertical) {
+        showSize.setHeight(qMin(m_displayFrameSize.height(), screenRect.height() - 200));
+        showSize.setWidth(static_cast<int>(showSize.height() * m_widthHeightRatio));
+    } else {
+        showSize.setWidth(qMin(m_displayFrameSize.width(), screenRect.width() / 2));
+        showSize.setHeight(static_cast<int>(showSize.width() / m_widthHeightRatio));
+    }
+
+    if (isFullScreen() && qsc::IDeviceManage::getInstance().getDevice(m_serial)) {
+        switchFullScreen();
+    }
+
+    if (isMaximized()) {
+        showNormal();
+    }
+
+    if (m_skin) {
+        QMargins m = getMargins(vertical);
+        showSize.setWidth(showSize.width() + m.left() + m.right());
+        showSize.setHeight(showSize.height() + m.top() + m.bottom());
+    }
+
+    if (showSize != size()) {
+        resize(showSize);
         if (m_skin) {
-            QMargins m = getMargins(vertical);
-            showSize.setWidth(showSize.width() + m.left() + m.right());
-            showSize.setHeight(showSize.height() + m.top() + m.bottom());
+            updateStyleSheet(vertical);
         }
-
-        if (showSize != size()) {
-            resize(showSize);
-            if (m_skin) {
-                updateStyleSheet(vertical);
-            }
-            moveCenter();
-        }
+        moveCenter();
+    } else if (m_skin) {
+        // 尺寸未变化但显示方向可能变了（例如近似正方形），皮肤仍需切换
+        updateStyleSheet(vertical);
     }
 }
 
@@ -580,7 +747,8 @@ void VideoForm::switchFullScreen()
         //show();
 #endif
         if (m_skin) {
-            updateStyleSheet(m_frameSize.height() > m_frameSize.width());
+            // 使用显示方向（而不是帧方向）决定皮肤
+            updateStyleSheet(m_widthHeightRatio < 1.0f);
         }
         showToolForm(this->show_toolbar);
 #ifdef Q_OS_WIN32
@@ -710,14 +878,16 @@ void VideoForm::mousePressEvent(QMouseEvent *event)
         if (!device) {
             return;
         }
-        QPointF mappedPos = vw->mapFrom(this, localPos.toPoint());
+        QPointF mappedPos = mapInputPos(vw->mapFrom(this, localPos.toPoint()));
         QMouseEvent newEvent(event->type(), mappedPos, globalPos, event->button(), event->buttons(), event->modifiers());
-        emit device->mouseEvent(&newEvent, m_frameSize, vw->size());
+        // showSize 与 mapInputPos 配套（旋转后宽高互换），保证输入坐标换算正确
+        emit device->mouseEvent(&newEvent, m_frameSize, inputShowSize());
 
         // debug keymap pos
         if (event->button() == Qt::LeftButton) {
-            qreal x = localPos.x() / vw->size().width();
-            qreal y = localPos.y() / vw->size().height();
+            QSize showSize = inputShowSize();
+            qreal x = showSize.width() > 0 ? mappedPos.x() / showSize.width() : 0.0;
+            qreal y = showSize.height() > 0 ? mappedPos.y() / showSize.height() : 0.0;
             QString posTip = QString(R"("pos": {"x": %1, "y": %2})").arg(x).arg(y);
             qInfo() << posTip.toStdString().c_str();
         }
@@ -762,8 +932,8 @@ void VideoForm::mouseReleaseEvent(QMouseEvent *event)
         if (local.y() > vw->height()) {
             local.setY(vw->height());
         }
-        QMouseEvent newEvent(event->type(), local, globalPos, event->button(), event->buttons(), event->modifiers());
-        emit device->mouseEvent(&newEvent, m_frameSize, vw->size());
+        QMouseEvent newEvent(event->type(), mapInputPos(local), globalPos, event->button(), event->buttons(), event->modifiers());
+        emit device->mouseEvent(&newEvent, m_frameSize, inputShowSize());
     } else {
         m_dragPosition = QPoint(0, 0);
     }
@@ -784,9 +954,9 @@ void VideoForm::mouseMoveEvent(QMouseEvent *event)
         if (!device) {
             return;
         }
-        QPointF mappedPos = vw->mapFrom(this, localPos.toPoint());
+        QPointF mappedPos = mapInputPos(vw->mapFrom(this, localPos.toPoint()));
         QMouseEvent newEvent(event->type(), mappedPos, globalPos, event->button(), event->buttons(), event->modifiers());
-        emit device->mouseEvent(&newEvent, m_frameSize, vw->size());
+        emit device->mouseEvent(&newEvent, m_frameSize, inputShowSize());
     } else if (!m_dragPosition.isNull()) {
         if (event->buttons() & Qt::LeftButton) {
             move(globalPos.toPoint() - m_dragPosition);
@@ -820,9 +990,9 @@ void VideoForm::mouseDoubleClickEvent(QMouseEvent *event)
         QPointF localPos = event->position();
         QPointF globalPos = event->globalPosition();
 #endif
-        QPointF mappedPos = vw->mapFrom(this, localPos.toPoint());
+        QPointF mappedPos = mapInputPos(vw->mapFrom(this, localPos.toPoint()));
         QMouseEvent newEvent(event->type(), mappedPos, globalPos, event->button(), event->buttons(), event->modifiers());
-        emit device->mouseEvent(&newEvent, m_frameSize, vw->size());
+        emit device->mouseEvent(&newEvent, m_frameSize, inputShowSize());
     }
 }
 
@@ -838,7 +1008,7 @@ void VideoForm::wheelEvent(QWheelEvent *event)
         if (!device) {
             return;
         }
-        QPointF pos = vw->mapFrom(this, event->position().toPoint());
+        QPointF pos = mapInputPos(vw->mapFrom(this, event->position().toPoint()));
         QWheelEvent wheelEvent(
             pos, event->globalPosition(), event->pixelDelta(), event->angleDelta(), event->buttons(), event->modifiers(), event->phase(), event->inverted());
 #else
@@ -846,13 +1016,13 @@ void VideoForm::wheelEvent(QWheelEvent *event)
         if (!device) {
             return;
         }
-        QPointF pos = vw->mapFrom(this, event->pos());
+        QPointF pos = mapInputPos(vw->mapFrom(this, event->pos()));
 
         QWheelEvent wheelEvent(
             pos, event->globalPosF(), event->pixelDelta(), event->angleDelta(), event->delta(), event->orientation(),
             event->buttons(), event->modifiers(), event->phase(), event->source(), event->inverted());
 #endif
-        emit device->wheelEvent(&wheelEvent, m_frameSize, vw->size());
+        emit device->wheelEvent(&wheelEvent, m_frameSize, inputShowSize());
     }
 }
 
@@ -866,8 +1036,7 @@ void VideoForm::keyPressEvent(QKeyEvent *event)
         switchFullScreen();
     }
 
-    QWidget *vw = videoWidget();
-    QSize widgetSize = vw ? vw->size() : m_frameSize;
+    QSize widgetSize = inputShowSize();
     emit device->keyEvent(event, m_frameSize, widgetSize);
 }
 
@@ -877,8 +1046,7 @@ void VideoForm::keyReleaseEvent(QKeyEvent *event)
     if (!device) {
         return;
     }
-    QWidget *vw = videoWidget();
-    QSize widgetSize = vw ? vw->size() : m_frameSize;
+    QSize widgetSize = inputShowSize();
     emit device->keyEvent(event, m_frameSize, widgetSize);
 }
 

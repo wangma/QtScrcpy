@@ -4,6 +4,8 @@
 
 #include <QDebug>
 
+#include <cstring>
+
 #import <Metal/Metal.h>
 #import <CoreVideo/CoreVideo.h>
 #import <QuartzCore/CAMetalLayer.h>
@@ -13,10 +15,9 @@ static NSString *shaderSource = @R"(
 #include <metal_stdlib>
 using namespace metal;
 struct VertexOut { float4 position [[position]]; float2 texCoord; };
-vertex VertexOut vs(uint vid [[vertex_id]]) {
+vertex VertexOut vs(uint vid [[vertex_id]], constant float2 *tex [[buffer(0)]]) {
     float2 p[]={float2(-1,-1),float2(1,-1),float2(-1,1),float2(1,-1),float2(1,1),float2(-1,1)};
-    float2 t[]={float2(0,1),float2(1,1),float2(0,0),float2(1,1),float2(1,0),float2(0,0)};
-    return {float4(p[vid],0,1),t[vid]};
+    return {float4(p[vid],0,1),tex[vid]};
 }
 fragment float4 fs(VertexOut in [[stage_in]],
                     texture2d<float,access::sample> tY [[texture(0)]],
@@ -29,6 +30,19 @@ fragment float4 fs(VertexOut in [[stage_in]],
                   dot(float3(y,uv.x,uv.y),float3(1.1644,2.1124,0)),1.0);
 }
 )";
+
+// 6个顶点对应的纹理坐标，按画面顺时针旋转角度分组
+// 顶点顺序：左下、右下、左上、右下、右上、左上
+static const float textureCoordsTable[4][12] = {
+    // 0°
+    { 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f },
+    // 90°
+    { 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f },
+    // 180°
+    { 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f },
+    // 270°
+    { 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f },
+};
 
 struct MetalVideoWidget::Impl {
     id<MTLDevice> device = nil;
@@ -147,6 +161,9 @@ void MetalVideoWidget::renderFrame(CVPixelBufferRef pixelBuffer, int width, int 
         [enc setRenderPipelineState:d->ps];
         [enc setFragmentTexture:yT atIndex:0];
         [enc setFragmentTexture:uvT atIndex:1];
+        // 按显示方向选择纹理坐标，实现画面旋转
+        const int rotIndex = (((m_rotation % 360) + 360) % 360) / 90;
+        [enc setVertexBytes:textureCoordsTable[rotIndex] length:sizeof(textureCoordsTable[rotIndex]) atIndex:0];
         [enc drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:6];
         [enc endEncoding];
         [cb presentDrawable:draw];
@@ -174,9 +191,21 @@ void MetalVideoWidget::renderFrame(CVPixelBufferRef pixelBuffer, int width, int 
     }
 }
 
+void MetalVideoWidget::setRotation(int rotation)
+{
+    m_rotation = (((rotation % 360) + 360) % 360) / 90 * 90;
+}
+
+int MetalVideoWidget::rotation() const
+{
+    return m_rotation;
+}
+
 #else
 MetalVideoWidget::MetalVideoWidget(QWidget *parent) : QWidget(parent), d(nullptr) {}
 MetalVideoWidget::~MetalVideoWidget() {}
 bool MetalVideoWidget::initMetal() { return false; }
 void MetalVideoWidget::renderFrame(CVPixelBufferRef, int, int) {}
+void MetalVideoWidget::setRotation(int rotation) { m_rotation = rotation; }
+int MetalVideoWidget::rotation() const { return m_rotation; }
 #endif

@@ -20,6 +20,26 @@
         <translation>ロックなし</translation>
     </message>
     <message>
+        <source>display orientation：</source>
+        <translation>表示方向：</translation>
+    </message>
+    <message>
+        <source>Host-side display mode: only rotates the mirroring window, the phone is unchanged.</source>
+        <translation>ホスト側の表示モード：ミラーリングウィンドウのみを回転し、スマートフォン側は変更しません。</translation>
+    </message>
+    <message>
+        <source>follow video</source>
+        <translation>映像に従う</translation>
+    </message>
+    <message>
+        <source>force portrait</source>
+        <translation>縦向きを強制</translation>
+    </message>
+    <message>
+        <source>force landscape</source>
+        <translation>横向きを強制</translation>
+    </message>
+    <message>
         <source>FFmpeg + OpenGL (Universal Default)</source>
         <translation>FFmpeg + OpenGL（ユニバーサルデフォルト）</translation>
     </message>
@@ -391,6 +411,10 @@
     <message>
         <source>rotate device (Ctrl+R)</source>
         <translation>デバイスを回転（Ctrl+R）</translation>
+    </message>
+    <message>
+        <source>toggle landscape/portrait (Ctrl+Shift+R)</source>
+        <translation>横向き/縦向き表示の切り替え（Ctrl+Shift+R）</translation>
     </message>
     <message>
         <source>close screen (Ctrl+O)</source>

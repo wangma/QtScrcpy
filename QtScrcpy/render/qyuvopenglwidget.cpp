@@ -1,13 +1,19 @@
 #include <QCoreApplication>
+#include <QOpenGLContext>
 #include <QOpenGLTexture>
 #include <QSurfaceFormat>
+
+#include <cstring>
 
 #include "qyuvopenglwidget.h"
 
 // 存储顶点坐标和纹理坐标
 // 存在一起缓存在vbo
 // 使用glVertexAttribPointer指定访问方式即可
-static const GLfloat coordinate[] = {
+//
+// 顶点坐标固定不变，纹理坐标按显示方向旋转，
+// 这样窗口比例同步交换后即可让画面旋转90°并铺满窗口
+static const GLfloat vertexCoords[] = {
     // 顶点坐标，存储4个xyz坐标
     // 坐标范围为[-1,1],中心点为 0,0
     // 二维图像z始终为0
@@ -26,18 +32,29 @@ static const GLfloat coordinate[] = {
     1.0f,
     1.0f,
     0.0f,
-
-    // 纹理坐标，存储4个xy坐标
-    // 坐标范围为[0,1],左下角为 0,0
-    0.0f,
-    1.0f,
-    1.0f,
-    1.0f,
-    0.0f,
-    0.0f,
-    1.0f,
-    0.0f
 };
+
+// 4个顶点对应的纹理坐标，按画面顺时针旋转角度分组
+// 坐标范围为[0,1],左上角为 0,0
+static const GLfloat textureCoords[4][8] = {
+    // 0°
+    { 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f },
+    // 90°
+    { 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f },
+    // 180°
+    { 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f },
+    // 270°
+    { 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f },
+};
+
+// 生成vbo数据：顶点坐标 + 旋转后的纹理坐标
+static void buildVertexData(GLfloat *data, int rotation)
+{
+    const int index = (((rotation % 360) + 360) % 360) / 90;
+    memcpy(data, vertexCoords, sizeof(vertexCoords));
+    memcpy(data + sizeof(vertexCoords) / sizeof(GLfloat), textureCoords[index], sizeof(textureCoords[0]));
+}
+
 
 // 顶点着色器
 static const QString s_vertShader = R"(
@@ -139,6 +156,45 @@ void QYUVOpenGLWidget::updateTextures(quint8 *dataY, quint8 *dataU, quint8 *data
     }
 }
 
+void QYUVOpenGLWidget::setRotation(int rotation)
+{
+    rotation = (((rotation % 360) + 360) % 360) / 90 * 90;
+    if (m_rotation == rotation) {
+        return;
+    }
+    m_rotation = rotation;
+
+    // GL上下文未初始化时先记录角度，initializeGL中会按该角度生成vbo数据
+    if (m_vbo.isCreated() && context() && context()->isValid()) {
+        makeCurrent();
+        // 只有真正拿到了当前上下文才能写入vbo，否则交由paintGL纠正
+        if (QOpenGLContext::currentContext() == context()) {
+            updateVboRotation();
+        }
+        doneCurrent();
+    }
+    update();
+}
+
+// 必须在GL上下文为当前上下文时调用
+void QYUVOpenGLWidget::updateVboRotation()
+{
+    if (!m_vbo.isCreated() || m_vboRotation == m_rotation) {
+        return;
+    }
+    GLfloat vertexData[sizeof(vertexCoords) / sizeof(GLfloat) + sizeof(textureCoords[0]) / sizeof(GLfloat)];
+    buildVertexData(vertexData, m_rotation);
+    m_vbo.bind();
+    m_vbo.write(0, vertexData, sizeof(vertexData));
+    m_vbo.release();
+    m_vboRotation = m_rotation;
+}
+
+int QYUVOpenGLWidget::rotation() const
+{
+    return m_rotation;
+}
+
 void QYUVOpenGLWidget::initializeGL()
 {
     initializeOpenGLFunctions();
@@ -147,7 +203,10 @@ void QYUVOpenGLWidget::initializeGL()
     // 顶点缓冲对象初始化
     m_vbo.create();
     m_vbo.bind();
-    m_vbo.allocate(coordinate, sizeof(coordinate));
+    GLfloat vertexData[sizeof(vertexCoords) / sizeof(GLfloat) + sizeof(textureCoords[0]) / sizeof(GLfloat)];
+    buildVertexData(vertexData, m_rotation);
+    m_vbo.allocate(vertexData, sizeof(vertexData));
+    m_vboRotation = m_rotation;
     initShader();
     // 设置背景清理色为黑色
     glClearColor(0.0, 0.0, 0.0, 0.0);
@@ -158,6 +217,9 @@ void QYUVOpenGLWidget::initializeGL()
 void QYUVOpenGLWidget::paintGL()
 {
     m_shaderProgram.bind();
+
+    // 若旋转角度未及时写入vbo（setRotation时没有可用上下文），在此纠正
+    updateVboRotation();
 
     if (m_needUpdate) {
         deInitTextures();

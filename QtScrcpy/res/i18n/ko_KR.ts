@@ -20,6 +20,26 @@
         <translation>잠금 없음</translation>
     </message>
     <message>
+        <source>display orientation：</source>
+        <translation>표시 방향：</translation>
+    </message>
+    <message>
+        <source>Host-side display mode: only rotates the mirroring window, the phone is unchanged.</source>
+        <translation>호스트 표시 모드: 미러링 창만 회전하며 휴대폰은 변경되지 않습니다.</translation>
+    </message>
+    <message>
+        <source>follow video</source>
+        <translation>영상 따르기</translation>
+    </message>
+    <message>
+        <source>force portrait</source>
+        <translation>세로 강제</translation>
+    </message>
+    <message>
+        <source>force landscape</source>
+        <translation>가로 강제</translation>
+    </message>
+    <message>
         <source>FFmpeg + OpenGL (Universal Default)</source>
         <translation>FFmpeg + OpenGL（범용 기본값）</translation>
     </message>
@@ -391,6 +411,10 @@
     <message>
         <source>rotate device (Ctrl+R)</source>
         <translation>기기 회전 (Ctrl+R)</translation>
+    </message>
+    <message>
+        <source>toggle landscape/portrait (Ctrl+Shift+R)</source>
+        <translation>가로/세로 표시 전환 (Ctrl+Shift+R)</translation>
     </message>
     <message>
         <source>close screen (Ctrl+O)</source>

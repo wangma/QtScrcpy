@@ -269,6 +269,12 @@ void Dialog::initUI()
     ui->lockOrientationBox->addItem("270");
     ui->lockOrientationBox->setCurrentIndex(0);
 
+    // 主机侧显示方向（仅窗口旋转，不改变手机）
+    ui->displayOrientationBox->addItem(tr("follow video"));
+    ui->displayOrientationBox->addItem(tr("force portrait"));
+    ui->displayOrientationBox->addItem(tr("force landscape"));
+    ui->displayOrientationBox->setCurrentIndex(0);
+
     ui->decodeModeBox->addItem(tr("FFmpeg + OpenGL (Universal Default)"));
     ui->decodeModeBox->addItem(tr("VideoToolbox + Metal (Apple Silicon Only)"));
     ui->decodeModeBox->setCurrentIndex(0);
@@ -608,6 +614,7 @@ void Dialog::updateBootConfig(bool toView)
         ui->formatBox->setCurrentIndex(config.recordFormatIndex);
         ui->recordPathEdt->setText(config.recordPath);
         ui->lockOrientationBox->setCurrentIndex(config.lockOrientationIndex);
+        ui->displayOrientationBox->setCurrentIndex(qBound(0, config.displayOrientation, 2));
         ui->framelessCheck->setChecked(config.framelessWindow);
         ui->recordScreenCheck->setChecked(config.recordScreen);
         ui->notDisplayCheck->setChecked(config.recordBackground);
@@ -652,6 +659,7 @@ void Dialog::updateBootConfig(bool toView)
         config.recordFormatIndex = ui->formatBox->currentIndex();
         config.recordPath = ui->recordPathEdt->text();
         config.lockOrientationIndex = ui->lockOrientationBox->currentIndex();
+        config.displayOrientation = ui->displayOrientationBox->currentIndex();
         config.recordScreen = ui->recordScreenCheck->isChecked();
         config.recordBackground = ui->notDisplayCheck->isChecked();
         config.reverseConnect = ui->useReverseCheck->isChecked();
@@ -1282,8 +1290,15 @@ void Dialog::onDeviceConnected(bool success, const QString &serial, const QStrin
     }
     videoForm->setWindowTitle(name + "-" + serial);
     videoForm->updateShowSize(size);
+    // 应用主机侧显示方向（首帧之前生效，避免窗口尺寸跳变）
+    videoForm->setDisplayOrientation(qBound(0, ui->displayOrientationBox->currentIndex(), 2));
+    // 保持配置项与画面显示方向同步（工具栏按钮/快捷键切换后也能正确保存）
+    connect(videoForm, &VideoForm::displayOrientationChanged, this, [this](int orientation) {
+        ui->displayOrientationBox->setCurrentIndex(qBound(0, orientation, 2));
+    });
 
-    bool deviceVer = size.height() > size.width();
+    // 用显示方向（而不是帧方向）判断，保证主机侧旋转后仍能恢复上次的窗口几何
+    bool deviceVer = videoForm->isDisplayPortrait();
     QRect rc = Config::getInstance().getRect(serial);
     bool rcVer = rc.height() > rc.width();
     // same width/height rate

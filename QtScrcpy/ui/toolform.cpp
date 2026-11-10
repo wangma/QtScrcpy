@@ -45,6 +45,8 @@ void ToolForm::updateCameraMode()
     ui->expandNotifyBtn->setVisible(!camera);
     ui->expandSettingsBtn->setVisible(!camera);
     ui->rotateBtn->setVisible(!camera);
+    // 虚拟显示器尺寸由 client 决定，不支持主机侧旋转
+    ui->orientationBtn->setVisible(!camera && !(device && device->isFlexDisplay()));
     ui->touchBtn->setVisible(!camera);
     ui->openScreenBtn->setVisible(!camera);
     ui->closeScreenBtn->setVisible(!camera);
@@ -77,6 +79,7 @@ void ToolForm::initStyle()
     IconHelper::Instance()->SetIcon(ui->expandNotifyBtn, QChar(0xf103), 15);
     IconHelper::Instance()->SetIcon(ui->expandSettingsBtn, QChar(0xf013), 15);
     IconHelper::Instance()->SetIcon(ui->rotateBtn, QChar(0xf021), 15);
+    IconHelper::Instance()->SetIcon(ui->orientationBtn, QChar(0xf10b), 15);
     IconHelper::Instance()->SetIcon(ui->screenShotBtn, QChar(0xf0c4), 15);
     IconHelper::Instance()->SetIcon(ui->touchBtn, QChar(0xf111), 15);
     IconHelper::Instance()->SetIcon(ui->groupControlBtn, QChar(0xf0c0), 15);
@@ -252,6 +255,15 @@ void ToolForm::on_rotateBtn_clicked()
     if (device) {
         device->rotateDevice();
     }
+}
+
+void ToolForm::on_orientationBtn_clicked()
+{
+    auto device = qsc::IDeviceManage::getInstance().getDevice(m_serial);
+    if (!device || device->isCameraMode() || device->isFlexDisplay()) {
+        return;
+    }
+    emit orientationSwitchRequested();
 }
 
 void ToolForm::on_touchBtn_clicked()

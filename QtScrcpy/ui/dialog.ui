@@ -633,6 +633,35 @@
               </property>
              </widget>
             </item>
+            <item>
+             <widget class="QLabel" name="label_displayOrientation">
+              <property name="sizePolicy">
+               <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
+                <horstretch>0</horstretch>
+                <verstretch>0</verstretch>
+               </sizepolicy>
+              </property>
+              <property name="toolTip">
+               <string>Host-side display mode: only rotates the mirroring window, the phone is unchanged.</string>
+              </property>
+              <property name="text">
+               <string>display orientation：</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QComboBox" name="displayOrientationBox">
+              <property name="sizePolicy">
+               <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+                <horstretch>0</horstretch>
+                <verstretch>0</verstretch>
+               </sizepolicy>
+              </property>
+              <property name="toolTip">
+               <string>Host-side display mode: only rotates the mirroring window, the phone is unchanged.</string>
+              </property>
+             </widget>
+            </item>
            </layout>
           </widget>
          </item>

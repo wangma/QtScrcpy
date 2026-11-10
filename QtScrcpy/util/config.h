@@ -14,6 +14,7 @@ struct UserBootConfig
     int maxSizeIndex = 0;
     int recordFormatIndex = 0;
     int lockOrientationIndex = 0;
+    int displayOrientation = 0;  // 0=follow video (default), 1=force portrait, 2=force landscape
     bool recordScreen     = false;
     bool recordBackground = false;
     bool reverseConnect   = true;

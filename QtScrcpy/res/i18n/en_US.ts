@@ -20,6 +20,26 @@
         <translation>no lock</translation>
     </message>
     <message>
+        <source>display orientation：</source>
+        <translation>display orientation：</translation>
+    </message>
+    <message>
+        <source>Host-side display mode: only rotates the mirroring window, the phone is unchanged.</source>
+        <translation>Host-side display mode: only rotates the mirroring window, the phone is unchanged.</translation>
+    </message>
+    <message>
+        <source>follow video</source>
+        <translation>follow video</translation>
+    </message>
+    <message>
+        <source>force portrait</source>
+        <translation>force portrait</translation>
+    </message>
+    <message>
+        <source>force landscape</source>
+        <translation>force landscape</translation>
+    </message>
+    <message>
         <source>FFmpeg + OpenGL (Universal Default)</source>
         <translation>FFmpeg + OpenGL (Universal Default)</translation>
     </message>
@@ -391,6 +411,10 @@
     <message>
         <source>rotate device (Ctrl+R)</source>
         <translation>rotate device (Ctrl+R)</translation>
+    </message>
+    <message>
+        <source>toggle landscape/portrait (Ctrl+Shift+R)</source>
+        <translation>toggle landscape/portrait (Ctrl+Shift+R)</translation>
     </message>
     <message>
         <source>close screen (Ctrl+O)</source>

@@ -20,6 +20,26 @@
         <translation>不锁定</translation>
     </message>
     <message>
+        <source>display orientation：</source>
+        <translation>显示方向：</translation>
+    </message>
+    <message>
+        <source>Host-side display mode: only rotates the mirroring window, the phone is unchanged.</source>
+        <translation>主机侧显示模式：仅旋转投屏窗口，手机端不变。</translation>
+    </message>
+    <message>
+        <source>follow video</source>
+        <translation>跟随视频</translation>
+    </message>
+    <message>
+        <source>force portrait</source>
+        <translation>强制竖屏</translation>
+    </message>
+    <message>
+        <source>force landscape</source>
+        <translation>强制横屏</translation>
+    </message>
+    <message>
         <source>FFmpeg + OpenGL (Universal Default)</source>
         <translation>FFmpeg + OpenGL（通用默认）</translation>
     </message>
@@ -391,6 +411,10 @@
     <message>
         <source>rotate device (Ctrl+R)</source>
         <translation>旋转设备（Ctrl+R）</translation>
+    </message>
+    <message>
+        <source>toggle landscape/portrait (Ctrl+Shift+R)</source>
+        <translation>切换横竖屏显示（Ctrl+Shift+R）</translation>
     </message>
     <message>
         <source>close screen (Ctrl+O)</source>

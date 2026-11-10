@@ -24,6 +24,10 @@ public:
     void setSerial(const QString& serial);
     bool isHost();
 
+signals:
+    // 请求切换主机的横竖屏显示（不改变手机）
+    void orientationSwitchRequested();
+
 protected:
     void mousePressEvent(QMouseEvent *event);
     void mouseReleaseEvent(QMouseEvent *event);
@@ -46,6 +50,7 @@ private slots:
     void on_expandNotifyBtn_clicked();
     void on_expandSettingsBtn_clicked();
     void on_rotateBtn_clicked();
+    void on_orientationBtn_clicked();
     void on_touchBtn_clicked();
     void on_cameraTorchBtn_clicked();
     void on_cameraZoomOutBtn_clicked();
